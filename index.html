@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta name="google-site-verification" content="GHLVRKVctmwaPmPrkrMBb6IPCnqYJF9rabBPgOV95ME" />
-  <meta charset="UTF-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>本音暴露ゲーム</title>
 <meta name="description" content="友達と遊ぶ本音暴露ゲーム。匿名でお題に本音を書いて、誰が書いたか当てよう。バレたら暴露、バレなければ永遠に闇へ。">
@@ -410,7 +410,7 @@
       <div class="section-label">お題を入力</div>
       <textarea id="input-topic" placeholder="例：実は友達に言えない本音" rows="3"></textarea>
       <div class="section-label">議論時間（秒）</div>
-      <input type="text" id="input-timer" value="60" style="width:100px;">
+      <input type="text" id="input-timer" value="180" style="width:100px;">
     </div>
     <button class="btn btn-primary" onclick="hostStart()" id="btn-start">ゲーム開始</button>
     <div class="error-text" id="host-error"></div>
@@ -504,20 +504,27 @@
     </div>
   </div>
 
-  <!-- 再投票画面 -->
+  <!-- 同数画面（ホストが決める） -->
   <div class="screen" id="screen-revote">
     <div class="card" style="text-align:center;">
-      <div class="card-title">同数！再投票</div>
+      <div class="card-title">同数！ホストが決定</div>
       <div class="small-text" id="revote-info" style="margin-bottom:16px;"></div>
     </div>
     <div class="card">
       <div class="card-title">この回答は誰が書いた？</div>
       <div class="answer-card" id="revote-answer" style="cursor:default;border-color:#333;"></div>
     </div>
-    <div class="section-label">候補者に投票してください</div>
-    <div id="revote-buttons"></div>
-    <div class="waiting-text" id="revote-waiting" style="display:none;">投票しました。ホストが結果を表示するまで待ってください...</div>
-    <button class="btn btn-primary" id="revote-reveal-btn" style="display:none;margin-top:12px;" onclick="hostReveal()">結果を見る</button>
+    <div id="revote-host-section" style="display:none;">
+      <div class="section-label">同数の候補者から選んでください</div>
+      <div id="revote-candidate-buttons"></div>
+      <div id="revote-selected-info" style="display:none;margin:12px 0;">
+        <div class="topic-display" id="revote-selected-name" style="text-align:center;font-size:20px;"></div>
+        <button class="btn btn-primary" onclick="hostDecideTie()" style="margin-top:12px;">この人に決定する</button>
+      </div>
+    </div>
+    <div id="revote-join-section" style="display:none;">
+      <div class="waiting-text">同数です。ホストが決定するまで待ってください...</div>
+    </div>
   </div>
 
   <!-- 全回答済み画面 -->
@@ -603,7 +610,7 @@ async function goHost() {
   if (!name) { document.getElementById('top-error').textContent = '名前を入力してください'; return; }
   myName = name; myId = generateId(); isHost = true; roomCode = generateCode();
   await db.ref(`rooms/${roomCode}`).set({
-    host: myId, status: 'lobby', topic: '', timerSeconds: 60,
+    host: myId, status: 'lobby', topic: '', timerSeconds: 180,
     currentAnswer: null, roundNum: 0,
   });
   await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: true });
@@ -678,6 +685,8 @@ async function hostStart() {
 function showAnswerScreen(room) {
   document.getElementById('answer-topic').textContent = room.topic;
   document.getElementById('input-answer').value = '';
+  document.getElementById('input-answer').disabled = false;
+  document.getElementById('input-answer').style.opacity = '1';
   document.getElementById('answer-waiting').style.display = 'none';
   document.getElementById('btn-submit-answer').style.display = 'block';
   showScreen('screen-answer');
@@ -690,6 +699,8 @@ async function submitAnswer() {
   document.getElementById('btn-submit-answer').style.display = 'none';
   document.getElementById('answer-waiting').style.display = 'block';
   document.getElementById('answer-error').textContent = '';
+  document.getElementById('input-answer').disabled = true;
+  document.getElementById('input-answer').style.opacity = '0.4';
   if (isHost) {
     db.ref(`rooms/${roomCode}/answers`).on('value', async (snap) => {
       const answers = snap.val() || {};
@@ -818,7 +829,7 @@ async function hostReveal() {
       status: 'revote',
       revoteCandidates: topIds,
       revoteCandidateNames: names,
-      votes: null,
+      revoteTally: tally,
     });
     return;
   }
@@ -877,7 +888,7 @@ async function hostNext() {
     await db.ref(`rooms/${roomCode}`).update({status:'allrevealed'});
     return;
   }
-  const timerSec = room.timerSeconds || 60;
+  const timerSec = room.timerSeconds || 180;
   const picked = remaining[Math.floor(Math.random()*remaining.length)][0];
   await db.ref(`rooms/${roomCode}/answers/${picked}`).update({revealed:true});
   await db.ref(`rooms/${roomCode}`).update({
@@ -945,34 +956,64 @@ function showAllRevealed() {
   showScreen('screen-allrevealed');
 }
 
+let selectedTieId = null;
+
 function showRevoteScreen(room, players) {
   const answers = room.answers || {};
   const key = room.currentAnswer;
   if (!key || !answers[key]) return;
-  hasVoted = false;
 
   const answerText = answers[key].text;
   const candidates = room.revoteCandidates || [];
   const names = room.revoteCandidateNames || '';
 
   document.getElementById('revote-answer').textContent = answerText;
-  document.getElementById('revote-info').textContent = `${names} が同数票でした。この中から再投票してください。`;
+  document.getElementById('revote-info').textContent = `${names} が同数票でした。`;
 
-  const btns = candidates.map(id =>
-    `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="revote('${id}')">${players[id]?.name || '?'}</button>`
-  ).join('');
-  document.getElementById('revote-buttons').innerHTML = btns;
-  document.getElementById('revote-waiting').style.display = 'none';
-  document.getElementById('revote-reveal-btn').style.display = isHost ? 'block' : 'none';
+  if (isHost) {
+    selectedTieId = null;
+    document.getElementById('revote-host-section').style.display = 'block';
+    document.getElementById('revote-join-section').style.display = 'none';
+    document.getElementById('revote-selected-info').style.display = 'none';
+
+    const btns = candidates.map(id =>
+      `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="selectTieCandidate('${id}','${players[id]?.name||'?'}')">${players[id]?.name || '?'}</button>`
+    ).join('');
+    document.getElementById('revote-candidate-buttons').innerHTML = btns;
+  } else {
+    document.getElementById('revote-host-section').style.display = 'none';
+    document.getElementById('revote-join-section').style.display = 'block';
+  }
+
   showScreen('screen-revote');
 }
 
-async function revote(targetId) {
-  if (hasVoted) return;
-  hasVoted = true;
-  await db.ref(`rooms/${roomCode}/votes`).push({ voterId: myId, targetId });
-  document.getElementById('revote-buttons').innerHTML = '';
-  document.getElementById('revote-waiting').style.display = 'block';
+function selectTieCandidate(id, name) {
+  selectedTieId = id;
+  document.getElementById('revote-selected-name').textContent = name + ' に決定？';
+  document.getElementById('revote-selected-info').style.display = 'block';
+  // 選択ボタンをハイライト
+  document.querySelectorAll('#revote-candidate-buttons button').forEach(b => {
+    b.style.borderColor = b.textContent.trim() === name ? 'var(--red)' : '#333';
+  });
+}
+
+async function hostDecideTie() {
+  if (!selectedTieId) return;
+  const snap = await db.ref(`rooms/${roomCode}`).once('value');
+  const room = snap.val();
+  const answers = room.answers || {};
+  const key = room.currentAnswer;
+  const tally = room.revoteTally || {};
+  const authorId = answers[key].authorId;
+  const correct = selectedTieId === authorId;
+  await db.ref(`rooms/${roomCode}`).update({
+    status: 'result',
+    revealAuthor: authorId,
+    revealCorrect: correct,
+    revealTally: tally,
+    revealAnswer: key,
+  });
 }
 
 async function playAgain() {
