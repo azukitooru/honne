@@ -736,9 +736,13 @@ function showVoteScreen(room, players) {
   const roundNum = room.roundNum || 0;
   const totalAnswers = Object.keys(answers).length;
 
-  // ホスト投票状況更新
+  // 投票済みかどうかをFirebaseのデータから判定（ローカル変数に依存しない）
   const votes = room.votes || {};
   const votedIds = Object.keys(votes).map(k => votes[k].voterId);
+  const iAlreadyVoted = votedIds.includes(myId);
+  hasVoted = iAlreadyVoted;
+
+  // 投票状況（ホスト用）
   const playerIds = Object.keys(players);
   const statusHtml = playerIds.map(id => {
     const voted = votedIds.includes(id);
@@ -752,9 +756,8 @@ function showVoteScreen(room, players) {
     document.getElementById('revealed-answer').textContent = answerText;
     document.getElementById('host-round-info').textContent = `回答 ${roundNum+1} / ${totalAnswers}`;
 
-    // ホストも投票ボタンを表示（まだ投票していない場合）
     const hostVoteBtns = document.getElementById('host-vote-buttons');
-    if (!hasVoted) {
+    if (!iAlreadyVoted) {
       const btns = Object.entries(players).filter(([id]) => id !== myId).map(([id,p]) =>
         `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="vote('${id}')">${p.name}</button>`
       ).join('');
@@ -769,11 +772,17 @@ function showVoteScreen(room, players) {
     document.getElementById('vote-topic').textContent = room.topic;
     document.getElementById('vote-answer').textContent = answerText;
     document.getElementById('vote-round-info').textContent = `回答 ${roundNum+1} / ${totalAnswers}`;
-    const btns = Object.entries(players).filter(([id]) => id !== myId).map(([id,p]) =>
-      `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="vote('${id}')">${p.name}</button>`
-    ).join('');
-    document.getElementById('vote-buttons').innerHTML = btns;
-    document.getElementById('vote-waiting').style.display = 'none';
+
+    if (!iAlreadyVoted) {
+      const btns = Object.entries(players).filter(([id]) => id !== myId).map(([id,p]) =>
+        `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="vote('${id}')">${p.name}</button>`
+      ).join('');
+      document.getElementById('vote-buttons').innerHTML = btns;
+      document.getElementById('vote-waiting').style.display = 'none';
+    } else {
+      document.getElementById('vote-buttons').innerHTML = '';
+      document.getElementById('vote-waiting').style.display = 'block';
+    }
     showScreen('screen-vote');
   }
   startTimer(room.timerEnd);
@@ -783,14 +792,15 @@ async function vote(targetId) {
   if (hasVoted) return;
   hasVoted = true;
   // 全投票ボタンを即座に無効化
-  document.querySelectorAll('#vote-buttons button, #host-vote-buttons button, #revote-buttons button').forEach(b => b.disabled = true);
-  await db.ref(`rooms/${roomCode}/votes`).push({ voterId: myId, targetId });
+  document.querySelectorAll('#vote-buttons button, #host-vote-buttons button').forEach(b => b.disabled = true);
   document.getElementById('vote-buttons').innerHTML = '';
   const hvb = document.getElementById('host-vote-buttons');
   if (hvb) hvb.innerHTML = '';
   document.getElementById('vote-waiting').style.display = 'block';
   const hvw = document.getElementById('host-vote-waiting');
   if (hvw) hvw.style.display = 'block';
+  // Firebaseへの書き込みは最後（UIを先に更新して二重押し防止）
+  await db.ref(`rooms/${roomCode}/votes`).push({ voterId: myId, targetId });
 }
 
 function startTimer(endTime) {
