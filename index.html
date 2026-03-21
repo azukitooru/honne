@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本音暴露ゲーム</title>
+<meta name="description" content="友達と遊ぶ本音暴露ゲーム。匿名でお題に本音を書いて、誰が書いたか当てよう。バレたら暴露、バレなければ永遠に闇へ。">
+<meta property="og:title" content="本音暴露ゲーム">
+<meta property="og:description" content="友達と遊ぶ本音暴露ゲーム。匿名でお題に本音を書いて、誰が書いたか当てよう。">
+<meta property="og:type" content="website">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=Syne:wght@700;800&display=swap');
+
+  :root {
+    --black: #0a0a0a;
+    --white: #f0ede6;
+    --red: #e8001d;
+    --red-dark: #9e0014;
+    --gray: #1c1c1c;
+    --gray-light: #2e2e2e;
+    --muted: #666;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--black);
+    color: var(--white);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  .logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  .logo-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -2px;
+    color: var(--white);
+    line-height: 1;
+  }
+
+  .logo-title span {
+    color: var(--red);
+  }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  .screen {
+    display: none;
+  }
+  .screen.active {
+    display: block;
+  }
+
+  .card {
+    background: var(--gray);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 16px;
+  }
+
+  input[type="text"], textarea {
+    width: 100%;
+    background: var(--gray-light);
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--white);
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 16px;
+    outline: none;
+    transition: border-color 0.2s;
+    resize: none;
+  }
+
+  input[type="text"]:focus, textarea:focus {
+    border-color: var(--red);
+  }
+
+  input[type="text"]::placeholder, textarea::placeholder {
+    color: var(--muted);
+  }
+
+  .btn {
+    width: 100%;
+    padding: 16px;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 1px;
+  }
+
+  .btn-primary {
+    background: var(--red);
+    color: var(--white);
+  }
+
+  .btn-primary:hover {
+    background: #ff0022;
+    transform: translateY(-1px);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  .btn-secondary {
+    background: var(--gray-light);
+    color: var(--white);
+  }
+
+  .btn-secondary:hover {
+    background: #3a3a3a;
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid #333;
+  }
+
+  .btn + .btn {
+    margin-top: 10px;
+  }
+
+  .divider {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    margin: 16px 0;
+    letter-spacing: 2px;
+  }
+
+  .room-code {
+    font-family: 'Syne', sans-serif;
+    font-size: 52px;
+    font-weight: 800;
+    letter-spacing: 8px;
+    color: var(--red);
+    text-align: center;
+    margin: 12px 0;
+  }
+
+  .badge {
+    display: inline-block;
+    background: var(--gray-light);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    margin: 4px;
+  }
+
+  .badge.active {
+    background: var(--red-dark);
+    color: var(--white);
+  }
+
+  .player-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .answer-card {
+    background: var(--gray-light);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 17px;
+    line-height: 1.6;
+  }
+
+  .answer-card:hover {
+    border-color: var(--red);
+  }
+
+  .answer-card.selected {
+    border-color: var(--red);
+    background: #2a1010;
+  }
+
+  .answer-card.result-correct {
+    border-color: #00e676;
+    background: #001a0e;
+  }
+
+  .answer-card.result-wrong {
+    border-color: #555;
+    opacity: 0.6;
+  }
+
+  .timer-bar-wrap {
+    background: var(--gray-light);
+    border-radius: 4px;
+    height: 6px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+
+  .timer-bar {
+    height: 100%;
+    background: var(--red);
+    border-radius: 4px;
+    transition: width 1s linear, background 0.3s;
+  }
+
+  .big-text {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .small-text {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .reveal-name {
+    font-family: 'Syne', sans-serif;
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--red);
+    text-align: center;
+    margin: 16px 0 4px;
+  }
+
+  .vote-count {
+    font-size: 13px;
+    color: var(--muted);
+    text-align: right;
+    margin-top: 6px;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #00e676;
+    margin-right: 6px;
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+    margin-top: 20px;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .input-row input {
+    flex: 1;
+  }
+
+  .input-row .btn {
+    width: auto;
+    padding: 14px 20px;
+    white-space: nowrap;
+  }
+
+  .topic-display {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--white);
+    background: var(--gray-light);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    border-left: 4px solid var(--red);
+    line-height: 1.5;
+  }
+
+  .waiting-text {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    padding: 20px 0;
+  }
+
+  .round-info {
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+
+  .error-text {
+    color: var(--red);
+    font-size: 13px;
+    margin-top: 8px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="logo">
+    <div class="logo-title">本<span>音</span></div>
+    <div class="logo-sub">本音暴露ゲーム</div>
+  </div>
+
+  <!-- トップ画面 -->
+  <div class="screen active" id="screen-top">
+    <div class="card">
+      <div class="card-title">ニックネーム</div>
+      <input type="text" id="input-name" placeholder="例：とおる" maxlength="10">
+    </div>
+    <button class="btn btn-primary" onclick="goHost()">部屋を作る</button>
+    <div class="divider">— または —</div>
+    <div class="card">
+      <div class="card-title">ルームコードで参加</div>
+      <div class="input-row">
+        <input type="text" id="input-code" placeholder="ABCD" maxlength="4" style="text-transform:uppercase;letter-spacing:4px;font-size:20px;font-weight:700;">
+        <button class="btn btn-secondary" onclick="checkRoom()" style="width:auto;padding:14px 20px;">参加</button>
+      </div>
+    </div>
+    <div class="error-text" id="top-error"></div>
+  </div>
+
+  <!-- 参加者名前入力画面 -->
+  <div class="screen" id="screen-join-name">
+    <div class="card">
+      <div class="card-title">ルームコード</div>
+      <div class="room-code" id="join-name-code">----</div>
+    </div>
+    <div class="card">
+      <div class="card-title">ニックネームを入力</div>
+      <input type="text" id="input-join-name" placeholder="例：とおる" maxlength="10">
+    </div>
+    <button class="btn btn-primary" onclick="goJoin()">参加する</button>
+    <div class="error-text" id="join-name-error"></div>
+  </div>
+
+  <!-- ホスト待機室 -->
+  <div class="screen" id="screen-host-lobby">
+    <div class="card">
+      <div class="card-title">ルームコード</div>
+      <div class="room-code" id="display-code">----</div>
+      <div class="small-text" style="text-align:center;">このコードを友達に共有してください</div>
+      <div style="display:flex;gap:8px;margin-top:14px;justify-content:center;">
+        <button onclick="copyRoomCode()" class="btn btn-secondary" style="width:auto;padding:10px 18px;font-size:13px;">📋 コードをコピー</button>
+        <button onclick="shareToLine()" class="btn btn-secondary" style="width:auto;padding:10px 18px;font-size:13px;background:#06C755;color:white;">LINE</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="status-dot"></span>参加者</div>
+      <div class="player-list" id="host-player-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">お題</div>
+      <button onclick="togglePresets()" id="preset-toggle-btn" style="width:100%;background:var(--gray-light);border:1px solid #444;border-radius:10px;color:var(--white);font-size:14px;font-weight:700;letter-spacing:1px;cursor:pointer;padding:12px 16px;font-family:inherit;text-align:left;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <span>📋 テンプレから選ぶ</span><span id="preset-arrow">▼</span>
+      </button>
+      <div id="preset-list" style="display:none;flex-direction:column;gap:8px;margin-bottom:14px;"></div>
+      <div class="section-label">お題を入力</div>
+      <textarea id="input-topic" placeholder="例：実は友達に言えない本音" rows="3"></textarea>
+      <div class="section-label">議論時間（秒）</div>
+      <input type="text" id="input-timer" value="60" style="width:100px;">
+    </div>
+    <button class="btn btn-primary" onclick="hostStart()" id="btn-start">ゲーム開始</button>
+    <div class="error-text" id="host-error"></div>
+  </div>
+
+  <!-- 参加者待機室 -->
+  <div class="screen" id="screen-join-lobby">
+    <div class="card">
+      <div class="card-title">参加中のルーム</div>
+      <div class="room-code" id="join-display-code">----</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="status-dot"></span>参加者</div>
+      <div class="player-list" id="join-player-list"></div>
+    </div>
+    <div class="waiting-text">ホストがゲームを開始するまで待ってください...</div>
+  </div>
+
+  <!-- 回答入力画面 -->
+  <div class="screen" id="screen-answer">
+    <div class="card">
+      <div class="card-title">お題</div>
+      <div class="topic-display" id="answer-topic"></div>
+      <textarea id="input-answer" placeholder="本音を書いてください..." rows="4"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>
+    <div class="waiting-text" id="answer-waiting" style="display:none;">送信しました。全員が回答するまで待ってください...</div>
+    <div class="error-text" id="answer-error"></div>
+  </div>
+
+  <!-- 投票画面（ホスト） -->
+  <div class="screen" id="screen-host-vote">
+    <div class="round-info" id="host-round-info"></div>
+    <div class="card">
+      <div class="card-title">お題</div>
+      <div class="topic-display" id="host-vote-topic"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">この回答は誰が書いた？</div>
+      <div class="answer-card" id="revealed-answer" style="cursor:default;"></div>
+    </div>
+    <div class="timer-bar-wrap">
+      <div class="timer-bar" id="timer-bar"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="status-dot"></span>投票状況</div>
+      <div class="player-list" id="host-vote-status"></div>
+    </div>
+    <div class="section-label">誰が書いたと思う？</div>
+    <div id="host-vote-buttons"></div>
+    <div class="waiting-text" id="host-vote-waiting" style="display:none;">投票しました。</div>
+    <button class="btn btn-primary" onclick="hostReveal()" style="margin-top:12px;">結果を見る</button>
+  </div>
+
+  <!-- 投票画面（参加者） -->
+  <div class="screen" id="screen-vote">
+    <div class="round-info" id="vote-round-info"></div>
+    <div class="card">
+      <div class="card-title">お題</div>
+      <div class="topic-display" id="vote-topic"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">この回答は誰が書いた？</div>
+      <div class="answer-card" id="vote-answer" style="cursor:default;border-color:#333;"></div>
+    </div>
+    <div class="timer-bar-wrap">
+      <div class="timer-bar" id="timer-bar-2"></div>
+    </div>
+    <div class="section-label">誰が書いたと思う？</div>
+    <div id="vote-buttons"></div>
+    <div class="waiting-text" id="vote-waiting" style="display:none;">投票しました。ホストが結果を表示するまで待ってください...</div>
+    <div class="error-text" id="vote-error"></div>
+  </div>
+
+  <!-- 結果画面 -->
+  <div class="screen" id="screen-result">
+    <div class="card" style="text-align:center;">
+      <div class="card-title">この回答を書いたのは...</div>
+      <div class="answer-card" id="result-answer" style="cursor:default;text-align:left;"></div>
+      <div class="reveal-name" id="result-name"></div>
+      <div class="small-text" id="result-sub"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">投票結果</div>
+      <div id="result-votes"></div>
+    </div>
+    <div class="waiting-text" id="result-waiting">ホストが次に進めるまで待ってください...</div>
+    <div id="host-result-buttons" style="display:none;">
+      <button class="btn btn-primary" onclick="hostNext()">次の回答へ</button>
+      <button class="btn btn-ghost" onclick="hostEnd()" style="margin-top:10px;">ゲーム終了</button>
+    </div>
+  </div>
+
+  <!-- 再投票画面 -->
+  <div class="screen" id="screen-revote">
+    <div class="card" style="text-align:center;">
+      <div class="card-title">同数！再投票</div>
+      <div class="small-text" id="revote-info" style="margin-bottom:16px;"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">この回答は誰が書いた？</div>
+      <div class="answer-card" id="revote-answer" style="cursor:default;border-color:#333;"></div>
+    </div>
+    <div class="section-label">候補者に投票してください</div>
+    <div id="revote-buttons"></div>
+    <div class="waiting-text" id="revote-waiting" style="display:none;">投票しました。ホストが結果を表示するまで待ってください...</div>
+    <button class="btn btn-primary" id="revote-reveal-btn" style="display:none;margin-top:12px;" onclick="hostReveal()">結果を見る</button>
+  </div>
+
+  <!-- 全回答済み画面 -->
+  <div class="screen" id="screen-allrevealed">
+    <div class="card" style="text-align:center;padding:32px 28px;">
+      <div class="big-text">全員分の本音が暴かれた！</div>
+      <div class="small-text" style="margin-top:12px;">秘密はもう残っていない...</div>
+    </div>
+    <div id="allrevealed-host-btns" style="display:none;">
+      <button class="btn btn-primary" onclick="playAgain()">続けて遊ぶ（別のお題）</button>
+      <button class="btn btn-ghost" onclick="hostEnd()" style="margin-top:10px;">ゲーム終了</button>
+    </div>
+    <div id="allrevealed-join-btns" style="display:none;">
+      <div class="waiting-text">ホストが次のゲームを設定中...</div>
+    </div>
+  </div>
+
+  <!-- 終了画面 -->
+  <div class="screen" id="screen-end">
+    <div class="card" style="text-align:center;padding:40px 28px;">
+      <div class="big-text">お疲れ様でした</div>
+      <div class="small-text" style="margin-top:12px;">暴露されなかった本音は<br>永遠に闇の中へ...</div>
+    </div>
+    <div id="end-host-btns" style="display:none;">
+      <button class="btn btn-primary" onclick="playAgain()">続けて遊ぶ（別のお題）</button>
+      <button class="btn btn-ghost" onclick="location.reload()" style="margin-top:10px;">最初に戻る</button>
+    </div>
+    <div id="end-join-btns" style="display:none;">
+      <div class="waiting-text">ホストが次のゲームを設定中...</div>
+      <button class="btn btn-ghost" onclick="location.reload()" style="margin-top:10px;">最初に戻る</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script>
+// Firebase初期化
+const firebaseConfig = {
+  apiKey: "AIzaSyBUBEcfkF6kYmPWWh9N7zGHmR5PucN5Ji8",
+  authDomain: "honne-b07cb.firebaseapp.com",
+  databaseURL: "https://honne-b07cb-default-rtdb.firebaseio.com",
+  projectId: "honne-b07cb",
+  storageBucket: "honne-b07cb.firebasestorage.app",
+  messagingSenderId: "747300292166",
+  appId: "1:747300292166:web:37fb63a93e83d0843c2c47"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let myName = "", myId = "", roomCode = "", isHost = false;
+let hasVoted = false, timerInterval = null;
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function generateCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+}
+
+function copyRoomCode() {
+  const code = document.getElementById('display-code').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    alert('ルームコード「' + code + '」をコピーしました！');
+  });
+}
+
+function shareToLine() {
+  const code = document.getElementById('display-code').textContent;
+  const text = encodeURIComponent('本音暴露ゲームで遊ぼう！\nルームコード：' + code + '\nサイトを開いてコードを入力してね。');
+  window.open('https://line.me/R/msg/text/?' + text, '_blank');
+}
+
+function generateId() {
+  return Math.random().toString(36).substr(2,9);
+}
+
+async function goHost() {
+  const name = document.getElementById('input-name').value.trim();
+  if (!name) { document.getElementById('top-error').textContent = '名前を入力してください'; return; }
+  myName = name; myId = generateId(); isHost = true; roomCode = generateCode();
+  await db.ref(`rooms/${roomCode}`).set({
+    host: myId, status: 'lobby', topic: '', timerSeconds: 60,
+    currentAnswer: null, roundNum: 0,
+  });
+  await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: true });
+  document.getElementById('display-code').textContent = roomCode;
+  showScreen('screen-host-lobby');
+  listenRoom();
+  initPresets();
+}
+
+async function checkRoom() {
+  const code = document.getElementById('input-code').value.trim().toUpperCase();
+  if (!code || code.length !== 4) { document.getElementById('top-error').textContent = 'ルームコードを入力してください'; return; }
+  const snap = await db.ref(`rooms/${code}`).once('value');
+  if (!snap.exists()) { document.getElementById('top-error').textContent = 'ルームが見つかりません'; return; }
+  document.getElementById('top-error').textContent = '';
+  document.getElementById('join-name-code').textContent = code;
+  document.getElementById('input-join-name').value = '';
+  showScreen('screen-join-name');
+}
+
+async function goJoin() {
+  const name = document.getElementById('input-join-name').value.trim();
+  const code = document.getElementById('join-name-code').textContent;
+  if (!name) { document.getElementById('join-name-error').textContent = '名前を入力してください'; return; }
+  const snap = await db.ref(`rooms/${code}`).once('value');
+  if (!snap.exists()) { document.getElementById('join-name-error').textContent = 'ルームが見つかりません'; return; }
+  myName = name; myId = generateId(); isHost = false; roomCode = code;
+  await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: false });
+  document.getElementById('join-display-code').textContent = roomCode;
+  showScreen('screen-join-lobby');
+  listenRoom();
+}
+
+function listenRoom() {
+  db.ref(`rooms/${roomCode}`).on('value', (snap) => {
+    if (!snap.exists()) return;
+    const room = snap.val();
+    const players = room.players || {};
+    const listHtml = Object.values(players).map(p =>
+      `<span class="badge ${p.isHost?'active':''}">${p.isHost?'👑 ':''}${p.name}</span>`
+    ).join('');
+    ['host-player-list','join-player-list'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = listHtml;
+    });
+    if (room.status === 'answering') showAnswerScreen(room);
+    else if (room.status === 'voting') showVoteScreen(room, players);
+    else if (room.status === 'result') showResultScreen(room, players);
+    else if (room.status === 'revote') showRevoteScreen(room, players);
+  else if (room.status === 'allrevealed') showAllRevealed();
+  else if (room.status === 'ended') {
+    showScreen('screen-end');
+    document.getElementById('end-host-btns').style.display = isHost ? 'block' : 'none';
+    document.getElementById('end-join-btns').style.display = isHost ? 'none' : 'block';
+  }
+  });
+}
+
+async function hostStart() {
+  const topic = document.getElementById('input-topic').value.trim();
+  const timerSec = parseInt(document.getElementById('input-timer').value) || 60;
+  const snap = await db.ref(`rooms/${roomCode}/players`).once('value');
+  const players = snap.val() || {};
+  if (Object.keys(players).length < 2) { document.getElementById('host-error').textContent = '2人以上必要です'; return; }
+  if (!topic) { document.getElementById('host-error').textContent = 'お題を入力してください'; return; }
+  await db.ref(`rooms/${roomCode}`).update({
+    status: 'answering', topic, timerSeconds: timerSec,
+    answers: null, currentAnswer: null, votes: null, roundNum: 0,
+  });
+}
+
+function showAnswerScreen(room) {
+  document.getElementById('answer-topic').textContent = room.topic;
+  document.getElementById('input-answer').value = '';
+  document.getElementById('answer-waiting').style.display = 'none';
+  document.getElementById('btn-submit-answer').style.display = 'block';
+  showScreen('screen-answer');
+}
+
+async function submitAnswer() {
+  const answer = document.getElementById('input-answer').value.trim();
+  if (!answer) { document.getElementById('answer-error').textContent = '回答を入力してください'; return; }
+  await db.ref(`rooms/${roomCode}/answers/${myId}`).set({ text: answer, authorId: myId });
+  document.getElementById('btn-submit-answer').style.display = 'none';
+  document.getElementById('answer-waiting').style.display = 'block';
+  document.getElementById('answer-error').textContent = '';
+  if (isHost) {
+    db.ref(`rooms/${roomCode}/answers`).on('value', async (snap) => {
+      const answers = snap.val() || {};
+      const pSnap = await db.ref(`rooms/${roomCode}/players`).once('value');
+      const players = pSnap.val() || {};
+      if (Object.keys(answers).length >= Object.keys(players).length) {
+        hostPickAnswer(answers);
+      }
+    });
+  }
+}
+
+async function hostPickAnswer(answers) {
+  const keys = Object.keys(answers);
+  const remaining = keys.filter(k => !answers[k].revealed);
+  if (remaining.length === 0) return;
+  const picked = remaining[Math.floor(Math.random()*remaining.length)];
+  await db.ref(`rooms/${roomCode}/answers/${picked}`).update({ revealed: true });
+  const snap = await db.ref(`rooms/${roomCode}/timerSeconds`).once('value');
+  const timerSec = snap.val() || 60;
+  await db.ref(`rooms/${roomCode}`).update({
+    status: 'voting', currentAnswer: picked, votes: null,
+    timerEnd: Date.now() + timerSec * 1000,
+  });
+}
+
+function showVoteScreen(room, players) {
+  const answers = room.answers || {};
+  const key = room.currentAnswer;
+  if (!key || !answers[key]) return;
+  hasVoted = false;
+  const answerText = answers[key].text;
+  const roundNum = room.roundNum || 0;
+  const totalAnswers = Object.keys(answers).length;
+
+  // ホスト投票状況更新
+  const votes = room.votes || {};
+  const votedIds = Object.keys(votes).map(k => votes[k].voterId);
+  const playerIds = Object.keys(players);
+  const statusHtml = playerIds.map(id => {
+    const voted = votedIds.includes(id);
+    return `<span class="badge ${voted?'active':''}">${players[id].name} ${voted?'✓':'...'}</span>`;
+  }).join('');
+  const statusEl = document.getElementById('host-vote-status');
+  if (statusEl) statusEl.innerHTML = statusHtml;
+
+  if (isHost) {
+    document.getElementById('host-vote-topic').textContent = room.topic;
+    document.getElementById('revealed-answer').textContent = answerText;
+    document.getElementById('host-round-info').textContent = `回答 ${roundNum+1} / ${totalAnswers}`;
+
+    // ホストも投票ボタンを表示（まだ投票していない場合）
+    const hostVoteBtns = document.getElementById('host-vote-buttons');
+    if (!hasVoted) {
+      const btns = Object.entries(players).filter(([id]) => id !== myId).map(([id,p]) =>
+        `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="vote('${id}')">${p.name}</button>`
+      ).join('');
+      hostVoteBtns.innerHTML = btns;
+      document.getElementById('host-vote-waiting').style.display = 'none';
+    } else {
+      hostVoteBtns.innerHTML = '';
+      document.getElementById('host-vote-waiting').style.display = 'block';
+    }
+    showScreen('screen-host-vote');
+  } else {
+    document.getElementById('vote-topic').textContent = room.topic;
+    document.getElementById('vote-answer').textContent = answerText;
+    document.getElementById('vote-round-info').textContent = `回答 ${roundNum+1} / ${totalAnswers}`;
+    const btns = Object.entries(players).filter(([id]) => id !== myId).map(([id,p]) =>
+      `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="vote('${id}')">${p.name}</button>`
+    ).join('');
+    document.getElementById('vote-buttons').innerHTML = btns;
+    document.getElementById('vote-waiting').style.display = 'none';
+    showScreen('screen-vote');
+  }
+  startTimer(room.timerEnd);
+}
+
+async function vote(targetId) {
+  if (hasVoted) return;
+  hasVoted = true;
+  // 全投票ボタンを即座に無効化
+  document.querySelectorAll('#vote-buttons button, #host-vote-buttons button, #revote-buttons button').forEach(b => b.disabled = true);
+  await db.ref(`rooms/${roomCode}/votes`).push({ voterId: myId, targetId });
+  document.getElementById('vote-buttons').innerHTML = '';
+  const hvb = document.getElementById('host-vote-buttons');
+  if (hvb) hvb.innerHTML = '';
+  document.getElementById('vote-waiting').style.display = 'block';
+  const hvw = document.getElementById('host-vote-waiting');
+  if (hvw) hvw.style.display = 'block';
+}
+
+function startTimer(endTime) {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = setInterval(() => {
+    const remaining = Math.max(0, endTime - Date.now());
+    const pct = (remaining / 60000) * 100;
+    ['timer-bar','timer-bar-2'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.style.width = pct+'%'; el.style.background = pct < 25 ? '#ff4444' : 'var(--red)'; }
+    });
+    if (remaining === 0) clearInterval(timerInterval);
+  }, 200);
+}
+
+async function hostReveal() {
+  const snap = await db.ref(`rooms/${roomCode}`).once('value');
+  const room = snap.val();
+  const answers = room.answers || {};
+  const key = room.currentAnswer;
+  const votes = room.votes || {};
+  const players = room.players || {};
+  const tally = {};
+  Object.values(votes).forEach(v => { tally[v.targetId] = (tally[v.targetId]||0)+1; });
+
+  // 最多票を集めたプレイヤーを調べる
+  let maxVotes = 0;
+  Object.values(tally).forEach(cnt => { if (cnt > maxVotes) maxVotes = cnt; });
+  const topIds = Object.entries(tally).filter(([id,cnt]) => cnt === maxVotes).map(([id]) => id);
+
+  // 同数が複数いたら再投票
+  if (topIds.length > 1 && maxVotes > 0) {
+    // 同数の候補者名を表示して再投票
+    const names = topIds.map(id => players[id]?.name || '?').join('、');
+    await db.ref(`rooms/${roomCode}`).update({
+      status: 'revote',
+      revoteCandidates: topIds,
+      revoteCandidateNames: names,
+      votes: null,
+    });
+    return;
+  }
+
+  const topId = topIds[0] || null;
+  const authorId = answers[key].authorId;
+  const correct = topId === authorId;
+  await db.ref(`rooms/${roomCode}`).update({
+    status: 'result',
+    revealAuthor: authorId,
+    revealCorrect: correct,
+    revealTally: tally,
+    revealAnswer: key,
+  });
+}
+
+function showResultScreen(room, players) {
+  const answers = room.answers || {};
+  const key = room.revealAnswer;
+  if (!key || !answers[key]) return;
+  const answerText = answers[key].text;
+  const authorId = room.revealAuthor;
+  const authorName = players[authorId]?.name || '???';
+  const correct = room.revealCorrect;
+  const tally = room.revealTally || {};
+  document.getElementById('result-answer').textContent = answerText;
+  if (correct) {
+    document.getElementById('result-name').textContent = authorName;
+    document.getElementById('result-name').style.display = 'block';
+    document.getElementById('result-sub').textContent = '🎉 正解！暴露されました';
+  } else {
+    document.getElementById('result-name').textContent = '???';
+    document.getElementById('result-name').style.display = 'block';
+    document.getElementById('result-sub').textContent = '🌑 不正解...この本音は闇へ';
+  }
+  const votesHtml = Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([id,cnt]) => {
+    const name = players[id]?.name || '???';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #333;">
+      <span>${name}</span>
+      <span style="color:var(--muted);">${'●'.repeat(Math.min(cnt,10))} ${cnt}票</span>
+    </div>`;
+  }).join('');
+  document.getElementById('result-votes').innerHTML = votesHtml || '<div style="color:var(--muted);font-size:13px;">投票なし</div>';
+  document.getElementById('result-waiting').style.display = isHost ? 'none' : 'block';
+  document.getElementById('host-result-buttons').style.display = isHost ? 'block' : 'none';
+  showScreen('screen-result');
+}
+
+async function hostNext() {
+  const snap = await db.ref(`rooms/${roomCode}`).once('value');
+  const room = snap.val();
+  const answers = room.answers || {};
+  const remaining = Object.entries(answers).filter(([k,v]) => !v.revealed);
+  if (remaining.length === 0) {
+    // 全部出し切っても終了しない、ホストが終了ボタンを押すまで待つ
+    await db.ref(`rooms/${roomCode}`).update({status:'allrevealed'});
+    return;
+  }
+  const timerSec = room.timerSeconds || 60;
+  const picked = remaining[Math.floor(Math.random()*remaining.length)][0];
+  await db.ref(`rooms/${roomCode}/answers/${picked}`).update({revealed:true});
+  await db.ref(`rooms/${roomCode}`).update({
+    status:'voting', currentAnswer:picked, votes:null,
+    roundNum:(room.roundNum||0)+1,
+    timerEnd: Date.now()+timerSec*1000,
+    revealAuthor:null, revealCorrect:null, revealTally:null,
+  });
+}
+
+const PRESETS = [
+  "誰かに言えない、自分の一番ダサい趣味や習慣は？",
+  "実はずっと気になっているけど、なかなか話しかけられない人がいる？",
+  "親についた最大の嘘で、今もバレていないものは？",
+  "密かに羨ましいと思っているこの中の誰かの長所は？",
+  "誰かに送ったあと「しまった」と後悔したメッセージは？",
+  "誰も見ていないとき、ついやってしまう恥ずかしい癖は？",
+  "実は今も引きずっている、過去の恥ずかしい出来事は？",
+  "一番正直な自分の弱点を一つ挙げるとしたら？",
+  "この中の誰かへの、正直な第一印象は？（誰かは言わなくていい）",
+  "絶対に親には言えない、最近したことは？",
+  "実はずっと続けている、人に言いにくい習慣は？",
+  "誰かへの本音で、面と向かって言えていないことは？",
+  "一番「自分らしくない」と思った瞬間は？",
+  "密かに気になっているけど絶対に検索できない話題は？",
+  "この中で一番「本当は仲良くなりたい」と思っている人は？",
+  "この中の誰か一人の心を5分間だけ読めるとしたら、誰を選んで何を知りたい？",
+  "今、あなたのネットの検索履歴にある一番恥ずかしいものは何？",
+  "自分はSとMどちらだと思う？正直に理由も含めて答えて。",
+];
+
+function togglePresets() {
+  const list = document.getElementById('preset-list');
+  const arrow = document.getElementById('preset-arrow');
+  const isOpen = list.style.display !== 'none';
+  list.style.display = isOpen ? 'none' : 'flex';
+  arrow.textContent = isOpen ? '▼' : '▲';
+}
+
+function initPresets() {
+  const list = document.getElementById('preset-list');
+  if (!list) return;
+  PRESETS.forEach(p => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost';
+    btn.style.cssText = 'width:100%;padding:10px 14px;font-size:13px;text-align:left;line-height:1.5;white-space:normal;word-break:break-word;';
+    btn.textContent = p;
+    btn.onclick = () => {
+      document.getElementById('input-topic').value = p;
+      document.querySelectorAll('#preset-list .btn').forEach(b => b.style.borderColor = '#333');
+      btn.style.borderColor = 'var(--red)';
+      togglePresets();
+    };
+    list.appendChild(btn);
+  });
+}
+
+async function hostEnd() {
+  await db.ref(`rooms/${roomCode}`).update({status:'ended'});
+}
+
+function showAllRevealed() {
+  document.getElementById('allrevealed-host-btns').style.display = isHost ? 'block' : 'none';
+  document.getElementById('allrevealed-join-btns').style.display = isHost ? 'none' : 'block';
+  showScreen('screen-allrevealed');
+}
+
+function showRevoteScreen(room, players) {
+  const answers = room.answers || {};
+  const key = room.currentAnswer;
+  if (!key || !answers[key]) return;
+  hasVoted = false;
+
+  const answerText = answers[key].text;
+  const candidates = room.revoteCandidates || [];
+  const names = room.revoteCandidateNames || '';
+
+  document.getElementById('revote-answer').textContent = answerText;
+  document.getElementById('revote-info').textContent = `${names} が同数票でした。この中から再投票してください。`;
+
+  const btns = candidates.map(id =>
+    `<button class="btn btn-secondary" style="margin-bottom:10px;" onclick="revote('${id}')">${players[id]?.name || '?'}</button>`
+  ).join('');
+  document.getElementById('revote-buttons').innerHTML = btns;
+  document.getElementById('revote-waiting').style.display = 'none';
+  document.getElementById('revote-reveal-btn').style.display = isHost ? 'block' : 'none';
+  showScreen('screen-revote');
+}
+
+async function revote(targetId) {
+  if (hasVoted) return;
+  hasVoted = true;
+  await db.ref(`rooms/${roomCode}/votes`).push({ voterId: myId, targetId });
+  document.getElementById('revote-buttons').innerHTML = '';
+  document.getElementById('revote-waiting').style.display = 'block';
+}
+
+async function playAgain() {
+  // お題・回答・投票をリセットしてロビーに戻す
+  await db.ref(`rooms/${roomCode}`).update({
+    status: 'lobby',
+    topic: '',
+    answers: null,
+    currentAnswer: null,
+    votes: null,
+    roundNum: 0,
+    revealAuthor: null,
+    revealCorrect: null,
+    revealTally: null,
+    revealAnswer: null,
+  });
+  document.getElementById('input-topic').value = '';
+  showScreen('screen-host-lobby');
+}
+</script>
+</body>
+</html>
