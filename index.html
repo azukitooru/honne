@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+
 <meta name="google-site-verification" content="GHLVRKVctmwaPmPrkrMBb6IPCnqYJF9rabBPgOV95ME" />
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -494,7 +495,7 @@
       <div class="room-code" id="join-display-code">----</div>
     </div>
     <div class="card">
-      <div class="card-title"><span class="status-dot"></span>参加者 <span id="join-player-count" style="color:var(--red);font-weight:800;">-</span> 人</div>
+      <div class="card-title"><span class="status-dot"></span>参加者</div>
       <div class="player-list" id="join-player-list"></div>
     </div>
     <div class="waiting-text">ホストがゲームを開始するまで待ってください...</div>
@@ -762,22 +763,19 @@ function listenRoom() {
     if (!snap.exists()) return;
     const room = snap.val();
     const players = room.players || {};
-    const listHtml = Object.values(players).map(p =>
+    const playerList = Object.values(players);
+    const listHtml = playerList.map(p =>
       `<span class="badge ${p.isHost?'active':''}">${p.isHost?'👑 ':''}${p.name}</span>`
     ).join('');
     ['host-player-list','join-player-list'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = listHtml;
     });
-    const countEl = document.getElementById('join-player-count');
-    if (countEl) countEl.textContent = playerList.length;
     if (room.status === 'answering') {
       showAnswerScreen(room);
-      // 回答数を更新
       const answers = room.answers || {};
-      const players = room.players || {};
       const answerCount = Object.keys(answers).length;
-      const playerCount = Object.keys(players).length;
+      const playerCount = playerList.length;
       const waitingEl = document.getElementById('answer-waiting');
       if (waitingEl && waitingEl.style.display !== 'none') {
         waitingEl.textContent = `送信しました。回答待ち... ${answerCount} / ${playerCount} 人`;
@@ -786,12 +784,12 @@ function listenRoom() {
     else if (room.status === 'voting') showVoteScreen(room, players);
     else if (room.status === 'result') showResultScreen(room, players);
     else if (room.status === 'revote') showRevoteScreen(room, players);
-  else if (room.status === 'allrevealed') showAllRevealed();
-  else if (room.status === 'ended') {
-    showScreen('screen-end');
-    document.getElementById('end-host-btns').style.display = isHost ? 'block' : 'none';
-    document.getElementById('end-join-btns').style.display = isHost ? 'none' : 'block';
-  }
+    else if (room.status === 'allrevealed') showAllRevealed();
+    else if (room.status === 'ended') {
+      showScreen('screen-end');
+      document.getElementById('end-host-btns').style.display = isHost ? 'block' : 'none';
+      document.getElementById('end-join-btns').style.display = isHost ? 'none' : 'block';
+    }
   });
 }
 
