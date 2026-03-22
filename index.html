@@ -1088,6 +1088,37 @@ async function playAgain() {
   document.getElementById('input-topic').value = '';
   showScreen('screen-host-lobby');
 }
+
+// リログ時に古いアカウントをFirebaseから削除
+window.addEventListener('load', async () => {
+  const savedId = sessionStorage.getItem('myId');
+  const savedRoom = sessionStorage.getItem('roomCode');
+  if (savedId && savedRoom) {
+    try {
+      await db.ref(`rooms/${savedRoom}/players/${savedId}`).remove();
+    } catch(e) {}
+  }
+  sessionStorage.removeItem('myId');
+  sessionStorage.removeItem('myName');
+  sessionStorage.removeItem('roomCode');
+  sessionStorage.removeItem('isHost');
+});
+
+window.goHost = goHost;
+window.goJoin = goJoin;
+window.checkRoom = checkRoom;
+window.hostStart = hostStart;
+window.submitAnswer = submitAnswer;
+window.vote = vote;
+window.hostReveal = hostReveal;
+window.hostNext = hostNext;
+window.hostEnd = hostEnd;
+window.playAgain = playAgain;
+window.togglePresets = togglePresets;
+window.selectTieCandidate = selectTieCandidate;
+window.hostDecideTie = hostDecideTie;
+window.copyRoomCode = copyRoomCode;
+window.shareToLine = shareToLine;
 </script>
 </body>
 </html>
