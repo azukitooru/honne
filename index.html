@@ -344,9 +344,80 @@
     margin-top: 8px;
     text-align: center;
   }
+
+  .flame-container {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 32px;
+    height: 60px;
+    align-items: flex-end;
+  }
+
+  .flame {
+    width: 12px;
+    border-radius: 50% 50% 20% 20%;
+    animation: flicker var(--dur) ease-in-out infinite alternate;
+    transform-origin: bottom center;
+  }
+
+  @keyframes flicker {
+    0%   { transform: scaleY(1) scaleX(1) rotate(-2deg); opacity: 0.9; }
+    33%  { transform: scaleY(1.15) scaleX(0.9) rotate(1deg); opacity: 1; }
+    66%  { transform: scaleY(0.9) scaleX(1.1) rotate(-1deg); opacity: 0.85; }
+    100% { transform: scaleY(1.2) scaleX(0.85) rotate(2deg); opacity: 1; }
+  }
+
+  .loading-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--black);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+
+  .loading-dots {
+    display: flex;
+    gap: 8px;
+  }
+
+  .loading-dot {
+    width: 10px;
+    height: 10px;
+    background: var(--red);
+    border-radius: 50%;
+    animation: bounce 0.8s infinite ease-in-out;
+  }
+
+  .loading-dot:nth-child(2) { animation-delay: 0.15s; }
+  .loading-dot:nth-child(3) { animation-delay: 0.3s; }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50% { transform: translateY(-10px); opacity: 1; }
+  }
+
+  .loading-text {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 16px;
+    letter-spacing: 2px;
+  }
 </style>
 </head>
 <body>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-dots">
+    <div class="loading-dot"></div>
+    <div class="loading-dot"></div>
+    <div class="loading-dot"></div>
+  </div>
+  <div class="loading-text">接続中...</div>
+</div>
 
 <div class="container">
   <div class="logo">
@@ -425,6 +496,11 @@
     <div class="card">
       <div class="card-title"><span class="status-dot"></span>参加者</div>
       <div class="player-list" id="join-player-list"></div>
+    </div>
+    <div class="card" style="text-align:center;">
+      <div class="card-title">参加人数</div>
+      <div id="join-player-count" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:var(--red);margin:8px 0;">-</div>
+      <div class="small-text">人が参加中</div>
     </div>
     <div class="waiting-text">ホストがゲームを開始するまで待ってください...</div>
   </div>
@@ -542,6 +618,8 @@
     <div id="allrevealed-join-btns" style="display:none;">
       <div class="waiting-text">ホストが次のゲームを設定中...</div>
     </div>
+    <!-- 炎アニメーション -->
+    <div class="flame-container" id="flame-container"></div>
   </div>
 
   <!-- 終了画面 -->
@@ -576,6 +654,14 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+
+// Firebase接続確認後にローディングを消す
+db.ref('.info/connected').on('value', (snap) => {
+  if (snap.val() === true) {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+});
 
 let myName = "", myId = "", roomCode = "", isHost = false;
 let hasVoted = false, timerInterval = null;
@@ -688,6 +774,8 @@ function listenRoom() {
       const el = document.getElementById(id);
       if (el) el.innerHTML = listHtml;
     });
+    const countEl = document.getElementById('join-player-count');
+    if (countEl) countEl.textContent = playerList.length;
     if (room.status === 'answering') {
       showAnswerScreen(room);
       // 回答数を更新
@@ -1031,6 +1119,30 @@ function showAllRevealed() {
   document.getElementById('allrevealed-host-btns').style.display = isHost ? 'block' : 'none';
   document.getElementById('allrevealed-join-btns').style.display = isHost ? 'none' : 'block';
   showScreen('screen-allrevealed');
+
+  // 炎アニメーション生成
+  const container = document.getElementById('flame-container');
+  container.innerHTML = '';
+  const colors = [
+    ['#ff6b00','#ff4500'],
+    ['#ff9500','#ff6b00'],
+    ['#ffcc00','#ff9500'],
+    ['#ff4500','#cc2200'],
+    ['#ff8c00','#ff4500'],
+    ['#ffaa00','#ff7700'],
+    ['#ff3300','#aa1100'],
+    ['#ffdd00','#ffaa00'],
+  ];
+  for (let i = 0; i < 12; i++) {
+    const flame = document.createElement('div');
+    flame.className = 'flame';
+    const h = 20 + Math.random() * 35;
+    const pair = colors[i % colors.length];
+    const dur = (0.6 + Math.random() * 0.8).toFixed(2) + 's';
+    const delay = (Math.random() * 0.5).toFixed(2) + 's';
+    flame.style.cssText = `height:${h}px;background:linear-gradient(to top,${pair[1]},${pair[0]});--dur:${dur};animation-delay:${delay};`;
+    container.appendChild(flame);
+  }
 }
 
 let selectedTieId = null;
