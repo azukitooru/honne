@@ -633,6 +633,7 @@ async function goHost() {
   const name = document.getElementById('input-name').value.trim();
   if (!name) { document.getElementById('top-error').textContent = '名前を入力してください'; return; }
   myName = name; myId = generateId(); isHost = true; roomCode = generateCode();
+  // ホストは新規作成なので重複チェック不要
   await db.ref(`rooms/${roomCode}`).set({
     host: myId, status: 'lobby', topic: '', timerSeconds: 180,
     currentAnswer: null, roundNum: 0,
@@ -662,6 +663,11 @@ async function goJoin() {
   if (!name) { document.getElementById('join-name-error').textContent = '名前を入力してください'; return; }
   const snap = await db.ref(`rooms/${code}`).once('value');
   if (!snap.exists()) { document.getElementById('join-name-error').textContent = 'ルームが見つかりません'; return; }
+  // 同じ名前が既にいないかチェック
+  const room = snap.val();
+  const players = room.players || {};
+  const nameExists = Object.values(players).some(p => p.name === name);
+  if (nameExists) { document.getElementById('join-name-error').textContent = 'その名前は既に使われています'; return; }
   myName = name; myId = generateId(); isHost = false; roomCode = code;
   await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: false });
   document.getElementById('join-display-code').textContent = roomCode;
@@ -682,7 +688,18 @@ function listenRoom() {
       const el = document.getElementById(id);
       if (el) el.innerHTML = listHtml;
     });
-    if (room.status === 'answering') showAnswerScreen(room);
+    if (room.status === 'answering') {
+      showAnswerScreen(room);
+      // 回答数を更新
+      const answers = room.answers || {};
+      const players = room.players || {};
+      const answerCount = Object.keys(answers).length;
+      const playerCount = Object.keys(players).length;
+      const waitingEl = document.getElementById('answer-waiting');
+      if (waitingEl && waitingEl.style.display !== 'none') {
+        waitingEl.textContent = `送信しました。回答待ち... ${answerCount} / ${playerCount} 人`;
+      }
+    }
     else if (room.status === 'voting') showVoteScreen(room, players);
     else if (room.status === 'result') showResultScreen(room, players);
     else if (room.status === 'revote') showRevoteScreen(room, players);
@@ -702,19 +719,23 @@ async function hostStart() {
   const players = snap.val() || {};
   if (Object.keys(players).length < 2) { document.getElementById('host-error').textContent = '2人以上必要です'; return; }
   if (!topic) { document.getElementById('host-error').textContent = 'お題を入力してください'; return; }
-  answerScreenShown = false;
   await db.ref(`rooms/${roomCode}`).update({
     status: 'answering', topic, timerSeconds: timerSec,
     answers: null, currentAnswer: null, votes: null, roundNum: 0,
   });
 }
 
-let answerScreenShown = false;
-
 function showAnswerScreen(room) {
-  // 既に回答画面を表示済みなら再描画しない（入力中の文字が消えるバグ防止）
-  if (answerScreenShown) return;
-  answerScreenShown = true;
+  // すでに回答画面が表示されていて入力中なら再描画しない
+  const currentScreen = document.querySelector('.screen.active');
+  if (currentScreen && currentScreen.id === 'screen-answer') {
+    const inputAnswer = document.getElementById('input-answer');
+    // 入力中なら何もしない
+    if (inputAnswer && !inputAnswer.disabled && inputAnswer.value.length > 0) return;
+    // 送信済みなら何もしない
+    if (inputAnswer && inputAnswer.disabled) return;
+    return;
+  }
   document.getElementById('answer-topic').textContent = room.topic;
   document.getElementById('input-answer').value = '';
   document.getElementById('input-answer').disabled = false;
@@ -731,7 +752,9 @@ async function submitAnswer() {
   // ボタンをDOMから完全に削除して復活を防ぐ
   const submitBtn = document.getElementById('btn-submit-answer');
   if (submitBtn) submitBtn.remove();
-  document.getElementById('answer-waiting').style.display = 'block';
+  const waitingEl = document.getElementById('answer-waiting');
+  waitingEl.style.display = 'block';
+  waitingEl.textContent = '送信しました。回答待ち...';
   document.getElementById('answer-error').textContent = '';
   document.getElementById('input-answer').disabled = true;
   document.getElementById('input-answer').style.opacity = '0.4';
@@ -1084,7 +1107,6 @@ async function playAgain() {
     revealTally: null,
     revealAnswer: null,
   });
-  answerScreenShown = false;
   document.getElementById('input-topic').value = '';
   showScreen('screen-host-lobby');
 }
