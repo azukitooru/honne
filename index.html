@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-
 <meta name="google-site-verification" content="GHLVRKVctmwaPmPrkrMBb6IPCnqYJF9rabBPgOV95ME" />
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>本音暴露ゲーム</title>
@@ -798,25 +798,21 @@ async function hostStart() {
   const timerSec = parseInt(document.getElementById('input-timer').value) || 180;
   const snap = await db.ref(`rooms/${roomCode}/players`).once('value');
   const players = snap.val() || {};
-  if (Object.keys(players).length < 2) { document.getElementById('host-error').textContent = '2人以上必要です'; return; }
+  if (Object.keys(players).length < 1) { document.getElementById('host-error').textContent = '参加者がいません'; return; }
   if (!topic) { document.getElementById('host-error').textContent = 'お題を入力してください'; return; }
   await db.ref(`rooms/${roomCode}`).update({
     status: 'answering', topic, timerSeconds: timerSec,
-    answers: null, currentAnswer: null, votes: null, roundNum: 0,
+    answers: {}, currentAnswer: null, votes: {}, roundNum: 0,
   });
 }
 
 function showAnswerScreen(room) {
-  const currentScreen = document.querySelector('.screen.active');
   const inputAnswer = document.getElementById('input-answer');
+  // 送信済みなら何もしない
+  if (inputAnswer && inputAnswer.disabled) return;
+  // 入力中なら何もしない  
+  if (inputAnswer && inputAnswer.value.length > 0) return;
 
-  // すでに回答画面が表示されている場合
-  if (currentScreen && currentScreen.id === 'screen-answer') {
-    // 入力中または送信済みなら再描画しない
-    if (inputAnswer && (inputAnswer.value.length > 0 || inputAnswer.disabled)) return;
-  }
-
-  // 回答画面を表示
   document.getElementById('answer-topic').textContent = room.topic;
   document.getElementById('input-answer').value = '';
   document.getElementById('input-answer').disabled = false;
@@ -1203,9 +1199,9 @@ async function playAgain() {
   await db.ref(`rooms/${roomCode}`).update({
     status: 'lobby',
     topic: '',
-    answers: null,
+    answers: {},
     currentAnswer: null,
-    votes: null,
+    votes: {},
     roundNum: 0,
     revealAuthor: null,
     revealCorrect: null,
