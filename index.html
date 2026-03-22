@@ -494,13 +494,8 @@
       <div class="room-code" id="join-display-code">----</div>
     </div>
     <div class="card">
-      <div class="card-title"><span class="status-dot"></span>参加者</div>
+      <div class="card-title"><span class="status-dot"></span>参加者 <span id="join-player-count" style="color:var(--red);font-weight:800;">-</span> 人</div>
       <div class="player-list" id="join-player-list"></div>
-    </div>
-    <div class="card" style="text-align:center;">
-      <div class="card-title">参加人数</div>
-      <div id="join-player-count" style="font-family:'Syne',sans-serif;font-size:48px;font-weight:800;color:var(--red);margin:8px 0;">-</div>
-      <div class="small-text">人が参加中</div>
     </div>
     <div class="waiting-text">ホストがゲームを開始するまで待ってください...</div>
   </div>
@@ -802,7 +797,7 @@ function listenRoom() {
 
 async function hostStart() {
   const topic = document.getElementById('input-topic').value.trim();
-  const timerSec = parseInt(document.getElementById('input-timer').value) || 60;
+  const timerSec = parseInt(document.getElementById('input-timer').value) || 180;
   const snap = await db.ref(`rooms/${roomCode}/players`).once('value');
   const players = snap.val() || {};
   if (Object.keys(players).length < 2) { document.getElementById('host-error').textContent = '2人以上必要です'; return; }
@@ -814,16 +809,16 @@ async function hostStart() {
 }
 
 function showAnswerScreen(room) {
-  // すでに回答画面が表示されていて入力中なら再描画しない
   const currentScreen = document.querySelector('.screen.active');
+  const inputAnswer = document.getElementById('input-answer');
+
+  // すでに回答画面が表示されている場合
   if (currentScreen && currentScreen.id === 'screen-answer') {
-    const inputAnswer = document.getElementById('input-answer');
-    // 入力中なら何もしない
-    if (inputAnswer && !inputAnswer.disabled && inputAnswer.value.length > 0) return;
-    // 送信済みなら何もしない
-    if (inputAnswer && inputAnswer.disabled) return;
-    return;
+    // 入力中または送信済みなら再描画しない
+    if (inputAnswer && (inputAnswer.value.length > 0 || inputAnswer.disabled)) return;
   }
+
+  // 回答画面を表示
   document.getElementById('answer-topic').textContent = room.topic;
   document.getElementById('input-answer').value = '';
   document.getElementById('input-answer').disabled = false;
