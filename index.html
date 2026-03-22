@@ -436,7 +436,9 @@
       <div class="topic-display" id="answer-topic"></div>
       <textarea id="input-answer" placeholder="本音を書いてください..." rows="4"></textarea>
     </div>
-    <button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>
+    <div id="btn-submit-answer-wrap">
+      <button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>
+    </div>
     <div class="waiting-text" id="answer-waiting" style="display:none;">送信しました。全員が回答するまで待ってください...</div>
     <div class="error-text" id="answer-error"></div>
   </div>
@@ -605,6 +607,28 @@ function generateId() {
   return Math.random().toString(36).substr(2,9);
 }
 
+function saveSession() {
+  sessionStorage.setItem('myId', myId);
+  sessionStorage.setItem('myName', myName);
+  sessionStorage.setItem('roomCode', roomCode);
+  sessionStorage.setItem('isHost', isHost);
+}
+
+function loadSession() {
+  const savedId = sessionStorage.getItem('myId');
+  const savedName = sessionStorage.getItem('myName');
+  const savedRoom = sessionStorage.getItem('roomCode');
+  const savedHost = sessionStorage.getItem('isHost');
+  if (savedId && savedName && savedRoom) {
+    myId = savedId;
+    myName = savedName;
+    roomCode = savedRoom;
+    isHost = savedHost === 'true';
+    return true;
+  }
+  return false;
+}
+
 async function goHost() {
   const name = document.getElementById('input-name').value.trim();
   if (!name) { document.getElementById('top-error').textContent = '名前を入力してください'; return; }
@@ -615,6 +639,7 @@ async function goHost() {
   });
   await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: true });
   document.getElementById('display-code').textContent = roomCode;
+  saveSession();
   showScreen('screen-host-lobby');
   listenRoom();
   initPresets();
@@ -640,6 +665,7 @@ async function goJoin() {
   myName = name; myId = generateId(); isHost = false; roomCode = code;
   await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: false });
   document.getElementById('join-display-code').textContent = roomCode;
+  saveSession();
   showScreen('screen-join-lobby');
   listenRoom();
 }
@@ -676,19 +702,25 @@ async function hostStart() {
   const players = snap.val() || {};
   if (Object.keys(players).length < 2) { document.getElementById('host-error').textContent = '2人以上必要です'; return; }
   if (!topic) { document.getElementById('host-error').textContent = 'お題を入力してください'; return; }
+  answerScreenShown = false;
   await db.ref(`rooms/${roomCode}`).update({
     status: 'answering', topic, timerSeconds: timerSec,
     answers: null, currentAnswer: null, votes: null, roundNum: 0,
   });
 }
 
+let answerScreenShown = false;
+
 function showAnswerScreen(room) {
+  // 既に回答画面を表示済みなら再描画しない（入力中の文字が消えるバグ防止）
+  if (answerScreenShown) return;
+  answerScreenShown = true;
   document.getElementById('answer-topic').textContent = room.topic;
   document.getElementById('input-answer').value = '';
   document.getElementById('input-answer').disabled = false;
   document.getElementById('input-answer').style.opacity = '1';
   document.getElementById('answer-waiting').style.display = 'none';
-  document.getElementById('btn-submit-answer').style.display = 'block';
+  document.getElementById('btn-submit-answer-wrap').innerHTML = '<button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>';
   showScreen('screen-answer');
 }
 
@@ -696,7 +728,9 @@ async function submitAnswer() {
   const answer = document.getElementById('input-answer').value.trim();
   if (!answer) { document.getElementById('answer-error').textContent = '回答を入力してください'; return; }
   await db.ref(`rooms/${roomCode}/answers/${myId}`).set({ text: answer, authorId: myId });
-  document.getElementById('btn-submit-answer').style.display = 'none';
+  // ボタンをDOMから完全に削除して復活を防ぐ
+  const submitBtn = document.getElementById('btn-submit-answer');
+  if (submitBtn) submitBtn.remove();
   document.getElementById('answer-waiting').style.display = 'block';
   document.getElementById('answer-error').textContent = '';
   document.getElementById('input-answer').disabled = true;
@@ -715,12 +749,12 @@ async function submitAnswer() {
 
 async function hostPickAnswer(answers) {
   const keys = Object.keys(answers);
+  // 最初の回答はrevealedをセットしない（表示するだけ）
   const remaining = keys.filter(k => !answers[k].revealed);
   if (remaining.length === 0) return;
   const picked = remaining[Math.floor(Math.random()*remaining.length)];
-  await db.ref(`rooms/${roomCode}/answers/${picked}`).update({ revealed: true });
   const snap = await db.ref(`rooms/${roomCode}/timerSeconds`).once('value');
-  const timerSec = snap.val() || 60;
+  const timerSec = snap.val() || 180;
   await db.ref(`rooms/${roomCode}`).update({
     status: 'voting', currentAnswer: picked, votes: null,
     timerEnd: Date.now() + timerSec * 1000,
@@ -892,15 +926,25 @@ async function hostNext() {
   const snap = await db.ref(`rooms/${roomCode}`).once('value');
   const room = snap.val();
   const answers = room.answers || {};
-  const remaining = Object.entries(answers).filter(([k,v]) => !v.revealed);
+  const currentKey = room.currentAnswer;
+
+  // 現在表示中の回答をrevealedにマーク
+  if (currentKey) {
+    await db.ref(`rooms/${roomCode}/answers/${currentKey}`).update({revealed: true});
+  }
+
+  // 最新のanswersを取得して残りを確認
+  const freshSnap = await db.ref(`rooms/${roomCode}/answers`).once('value');
+  const freshAnswers = freshSnap.val() || {};
+  const remaining = Object.entries(freshAnswers).filter(([k,v]) => !v.revealed);
+
   if (remaining.length === 0) {
-    // 全部出し切っても終了しない、ホストが終了ボタンを押すまで待つ
     await db.ref(`rooms/${roomCode}`).update({status:'allrevealed'});
     return;
   }
+
   const timerSec = room.timerSeconds || 180;
   const picked = remaining[Math.floor(Math.random()*remaining.length)][0];
-  await db.ref(`rooms/${roomCode}/answers/${picked}`).update({revealed:true});
   await db.ref(`rooms/${roomCode}`).update({
     status:'voting', currentAnswer:picked, votes:null,
     roundNum:(room.roundNum||0)+1,
@@ -1040,6 +1084,7 @@ async function playAgain() {
     revealTally: null,
     revealAnswer: null,
   });
+  answerScreenShown = false;
   document.getElementById('input-topic').value = '';
   showScreen('screen-host-lobby');
 }
