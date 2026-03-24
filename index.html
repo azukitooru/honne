@@ -772,12 +772,15 @@ function listenRoom() {
     });
     if (room.status === 'answering') {
       showAnswerScreen(room);
-      const answers = room.answers || {};
-      const answerCount = Object.keys(answers).length;
-      const playerCount = playerList.length;
-      const waitingEl = document.getElementById('answer-waiting');
-      if (waitingEl && waitingEl.style.display !== 'none') {
-        waitingEl.textContent = `送信しました。回答待ち... ${answerCount} / ${playerCount} 人`;
+      // 送信済みの場合のみ回答数を更新
+      if (answerSubmitted) {
+        const answers = room.answers || {};
+        const answerCount = Object.keys(answers).length;
+        const playerCount = playerList.length;
+        const waitingEl = document.getElementById('answer-waiting');
+        if (waitingEl && waitingEl.style.display !== 'none') {
+          waitingEl.textContent = `送信しました。回答待ち... ${answerCount} / ${playerCount} 人`;
+        }
       }
     }
     else if (room.status === 'voting') showVoteScreen(room, players);
@@ -819,26 +822,22 @@ function resetAnswerScreen() {
 }
 
 function showAnswerScreen(room) {
-  // お題を最新のものに更新
-  document.getElementById('answer-topic').textContent = room.topic;
-  
-  // 入力欄とボタンの状態を強制的にリセット（2回目用）
-  const inputEl = document.getElementById('input-answer');
-  if (inputEl) {
-    inputEl.value = '';
-    inputEl.disabled = false;
-    inputEl.style.opacity = '1';
-  }
-  const wrap = document.getElementById('btn-submit-answer-wrap');
-  if (wrap) {
-    wrap.innerHTML = '<button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>';
-  }
-  const waitingEl = document.getElementById('answer-waiting');
-  if (waitingEl) waitingEl.style.display = 'none';
+  // 送信済みなら一切触らない
+  if (answerSubmitted) return;
 
-  // フラグをリセットして画面を表示
-  answerSubmitted = false;
-  showScreen('screen-answer');
+  // まだ回答画面を表示していない場合のみ初期化する
+  const active = document.querySelector('.screen.active');
+  if (!active || active.id !== 'screen-answer') {
+    // 初めて回答画面に来た時だけリセット
+    document.getElementById('answer-topic').textContent = room.topic;
+    const inputEl = document.getElementById('input-answer');
+    if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
+    const wrap = document.getElementById('btn-submit-answer-wrap');
+    if (wrap) wrap.innerHTML = '<button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>';
+    const waitingEl = document.getElementById('answer-waiting');
+    if (waitingEl) { waitingEl.style.display = 'none'; waitingEl.textContent = ''; }
+    showScreen('screen-answer');
+  }
 }
 async function submitAnswer() {
   const answer = document.getElementById('input-answer').value.trim();
@@ -857,15 +856,17 @@ async function submitAnswer() {
   document.getElementById('input-answer').style.opacity = '0.4';
   answerSubmitted = true;
 
-  // ホストのみ：全員揃ったか一回だけチェックする（.on ではなく .once を使用）
+  // ホストのみ：全員揃ったか監視（.onで全員揃ったら一度だけ実行）
   if (isHost) {
-    const aSnap = await db.ref(`rooms/${roomCode}/answers`).once('value');
-    const pSnap = await db.ref(`rooms/${roomCode}/players`).once('value');
-    const answers = aSnap.val() || {};
-    const players = pSnap.val() || {};
-    if (Object.keys(answers).length >= Object.keys(players).length) {
-      hostPickAnswer(answers);
-    }
+    const checkAllAnswered = db.ref(`rooms/${roomCode}/answers`).on('value', async (snap) => {
+      const answers = snap.val() || {};
+      const pSnap = await db.ref(`rooms/${roomCode}/players`).once('value');
+      const players = pSnap.val() || {};
+      if (Object.keys(answers).length >= Object.keys(players).length && Object.keys(answers).length > 0) {
+        db.ref(`rooms/${roomCode}/answers`).off('value', checkAllAnswered);
+        hostPickAnswer(answers);
+      }
+    });
   }
 }
 
@@ -878,7 +879,7 @@ async function hostPickAnswer(answers) {
   const snap = await db.ref(`rooms/${roomCode}/timerSeconds`).once('value');
   const timerSec = snap.val() || 180;
   await db.ref(`rooms/${roomCode}`).update({
-    status: 'voting', currentAnswer: picked, votes: null,
+    status: 'voting', currentAnswer: picked, votes: {},
     timerEnd: Date.now() + timerSec * 1000,
   });
 }
@@ -1221,9 +1222,9 @@ async function playAgain() {
   await db.ref(`rooms/${roomCode}`).update({
     status: 'lobby',
     topic: '',
-    answers: null, 
+    answers: {}, 
     currentAnswer: null,
-    votes: null,
+    votes: {},
     roundNum: 0,
     revealAuthor: null,
     revealCorrect: null,
@@ -1233,6 +1234,7 @@ async function playAgain() {
   });
   
   answerSubmitted = false;
+  resetAnswerScreen();
   document.getElementById('input-topic').value = '';
   showScreen('screen-host-lobby');
 }
