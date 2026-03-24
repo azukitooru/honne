@@ -825,6 +825,7 @@ let answerSubmitted = false;
 
 function resetAnswerScreen() {
   answerSubmitted = false;
+  currentAnswerTopic = null; // 次のお題を必ず新しいお題として扱う
   const el = document.getElementById('input-answer');
   if (el) { el.value = ''; el.disabled = false; el.style.opacity = '1'; }
   const wrap = document.getElementById('btn-submit-answer-wrap');
@@ -835,8 +836,30 @@ function resetAnswerScreen() {
   if (errEl) errEl.textContent = '';
 }
 
+// 現在表示中の回答画面のtopicを記録（新しいお題かどうか判定に使う）
+let currentAnswerTopic = null;
+
 function showAnswerScreen(room) {
-  // 送信済みなら入力フォームだけ無効状態で表示（画面切替はする）
+  const isNewTopic = room.topic !== currentAnswerTopic;
+
+  if (isNewTopic) {
+    // 新しいお題 → 必ず初期化して表示（answerSubmittedも強制リセット）
+    answerSubmitted = false;
+    currentAnswerTopic = room.topic;
+    document.getElementById('answer-topic').textContent = room.topic;
+    const inputEl = document.getElementById('input-answer');
+    if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
+    const wrap = document.getElementById('btn-submit-answer-wrap');
+    if (wrap) wrap.innerHTML = '<button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>';
+    const waitingEl = document.getElementById('answer-waiting');
+    if (waitingEl) { waitingEl.style.display = 'none'; waitingEl.textContent = ''; }
+    const errEl = document.getElementById('answer-error');
+    if (errEl) errEl.textContent = '';
+    showScreen('screen-answer');
+    return;
+  }
+
+  // 同じお題 → 送信済みなら保護、未送信なら入力中を守る
   if (answerSubmitted) {
     // すでにscreen-answerが表示中なら何もしない
     const active = document.querySelector('.screen.active');
@@ -852,11 +875,11 @@ function showAnswerScreen(room) {
     return;
   }
 
-  // 既に回答画面が表示されているなら触らない（入力保護）
+  // 同じお題・未送信 → すでに入力中なら触らない（入力保護）
   const active = document.querySelector('.screen.active');
   if (active && active.id === 'screen-answer') return;
 
-  // 初めて回答画面に来た時だけ初期化
+  // 入力画面を初期化して表示
   document.getElementById('answer-topic').textContent = room.topic;
   const inputEl = document.getElementById('input-answer');
   if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
