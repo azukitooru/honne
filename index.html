@@ -779,11 +779,24 @@ function listenRoom() {
       if (waitingEl && waitingEl.style.display !== 'none') {
         waitingEl.textContent = `送信しました。回答待ち... ${answerCount} / ${playerCount} 人`;
       }
+      // 全員揃ったらホストがvotingに移行（listenRoom内で一元管理）
+      if (isHost && answerCount >= playerCount && playerCount > 0) {
+        hostPickAnswer(answers);
+      }
     }
     else if (room.status === 'voting') showVoteScreen(room, players);
     else if (room.status === 'result') showResultScreen(room, players);
     else if (room.status === 'revote') showRevoteScreen(room, players);
     else if (room.status === 'allrevealed') showAllRevealed();
+    else if (room.status === 'lobby') {
+      // playAgain後: ホストはplayAgain()内で画面遷移済み、参加者は待機室へ
+      if (!isHost) {
+        resetAnswerScreen();
+        hasVoted = false;
+        document.getElementById('join-display-code').textContent = roomCode;
+        showScreen('screen-join-lobby');
+      }
+    }
     else if (room.status === 'ended') {
       showScreen('screen-end');
       document.getElementById('end-host-btns').style.display = isHost ? 'block' : 'none';
@@ -800,9 +813,11 @@ async function hostStart() {
   if (Object.keys(players).length < 1) { document.getElementById('host-error').textContent = '参加者がいません'; return; }
   if (!topic) { document.getElementById('host-error').textContent = 'お題を入力してください'; return; }
   answerSubmitted = false;
+  hasVoted = false;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   await db.ref(`rooms/${roomCode}`).update({
     status: 'answering', topic, timerSeconds: timerSec,
-    answers: {}, currentAnswer: null, votes: {}, roundNum: 0,
+    answers: null, currentAnswer: null, votes: null, roundNum: 0,
   });
 }
 
@@ -816,11 +831,26 @@ function resetAnswerScreen() {
   if (wrap) wrap.innerHTML = '<button class="btn btn-primary" onclick="submitAnswer()" id="btn-submit-answer">送信する</button>';
   const waiting = document.getElementById('answer-waiting');
   if (waiting) { waiting.style.display = 'none'; waiting.textContent = ''; }
+  const errEl = document.getElementById('answer-error');
+  if (errEl) errEl.textContent = '';
 }
 
 function showAnswerScreen(room) {
-  // 送信済みなら絶対に触らない
-  if (answerSubmitted) return;
+  // 送信済みなら入力フォームだけ無効状態で表示（画面切替はする）
+  if (answerSubmitted) {
+    // すでにscreen-answerが表示中なら何もしない
+    const active = document.querySelector('.screen.active');
+    if (active && active.id === 'screen-answer') return;
+    // 別画面から戻ってきた場合は送信済み状態で表示
+    document.getElementById('answer-topic').textContent = room.topic;
+    const inputEl = document.getElementById('input-answer');
+    if (inputEl) { inputEl.disabled = true; inputEl.style.opacity = '0.4'; }
+    document.getElementById('btn-submit-answer-wrap').innerHTML = '';
+    const waitingEl = document.getElementById('answer-waiting');
+    if (waitingEl) { waitingEl.style.display = 'block'; }
+    showScreen('screen-answer');
+    return;
+  }
 
   // 既に回答画面が表示されているなら触らない（入力保護）
   const active = document.querySelector('.screen.active');
@@ -837,50 +867,37 @@ function showAnswerScreen(room) {
   showScreen('screen-answer');
 }
 async function submitAnswer() {
+  if (answerSubmitted) return; // 二重送信防止
   const answer = document.getElementById('input-answer').value.trim();
   if (!answer) { document.getElementById('answer-error').textContent = '回答を入力してください'; return; }
-  
-  await db.ref(`rooms/${roomCode}/answers/${myId}`).set({ text: answer, authorId: myId });
 
-  // UIの更新
-  const waitingEl = document.getElementById('answer-waiting');
-  if (waitingEl) {
-    waitingEl.style.display = 'block';
-    waitingEl.textContent = '送信しました。回答待ち...';
-  }
-  document.getElementById('btn-submit-answer-wrap').innerHTML = ''; 
+  // UIを先に更新して二重送信防止
+  answerSubmitted = true;
+  document.getElementById('btn-submit-answer-wrap').innerHTML = '';
   document.getElementById('input-answer').disabled = true;
   document.getElementById('input-answer').style.opacity = '0.4';
-  answerSubmitted = true;
+  const waitingEl = document.getElementById('answer-waiting');
+  if (waitingEl) { waitingEl.style.display = 'block'; waitingEl.textContent = '送信しました。回答待ち...'; }
 
-  // 全員監視：Firebaseのanswersを監視して全員揃ったらホストがhostPickAnswerを呼ぶ
-  const answerListener = db.ref(`rooms/${roomCode}/answers`).on('value', async (snap) => {
-    const answers = snap.val() || {};
-    const pSnap = await db.ref(`rooms/${roomCode}/players`).once('value');
-    const players = pSnap.val() || {};
-    const roomSnap = await db.ref(`rooms/${roomCode}/status`).once('value');
-    if (roomSnap.val() !== 'answering') {
-      db.ref(`rooms/${roomCode}/answers`).off('value', answerListener);
-      return;
-    }
-    if (Object.keys(answers).length >= Object.keys(players).length && Object.keys(answers).length > 0) {
-      db.ref(`rooms/${roomCode}/answers`).off('value', answerListener);
-      if (isHost) hostPickAnswer(answers);
-    }
-  });
+  await db.ref(`rooms/${roomCode}/answers/${myId}`).set({ text: answer, authorId: myId });
+  // 全員揃ったかの監視はlistenRoom内のon('value')で行う（リスナー漏れを防ぐ）
 }
 
 async function hostPickAnswer(answers) {
+  // ステータスが answering のときだけ実行（二重起動防止）
+  const statusSnap = await db.ref(`rooms/${roomCode}/status`).once('value');
+  if (statusSnap.val() !== 'answering') return;
+
   const keys = Object.keys(answers);
-  // 最初の回答はrevealedをセットしない（表示するだけ）
   const remaining = keys.filter(k => !answers[k].revealed);
   if (remaining.length === 0) return;
   const picked = remaining[Math.floor(Math.random()*remaining.length)];
-  const snap = await db.ref(`rooms/${roomCode}/timerSeconds`).once('value');
-  const timerSec = snap.val() || 180;
+  const timerSnap = await db.ref(`rooms/${roomCode}/timerSeconds`).once('value');
+  const timerSec = timerSnap.val() || 180;
   await db.ref(`rooms/${roomCode}`).update({
     status: 'voting', currentAnswer: picked, votes: {},
     timerEnd: Date.now() + timerSec * 1000,
+    roundNum: 1,
   });
 }
 
@@ -1218,26 +1235,37 @@ async function hostDecideTie() {
 }
 
 async function playAgain() {
-  // データを完全にリセット（answersなどを null にして削除）
+  // ローカル状態を先にリセット
+  resetAnswerScreen(); // answerSubmitted = false も含む
+  hasVoted = false;
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+
+  // Firebaseデータを完全にリセット
   await db.ref(`rooms/${roomCode}`).update({
     status: 'lobby',
     topic: '',
-    answers: {}, 
+    answers: null,
     currentAnswer: null,
-    votes: {},
+    votes: null,
     roundNum: 0,
     revealAuthor: null,
     revealCorrect: null,
     revealTally: null,
     revealAnswer: null,
-    timerEnd: null
+    timerEnd: null,
+    revoteCandidates: null,
+    revoteCandidateNames: null,
+    revoteTally: null,
   });
-  
-  answerSubmitted = false;
-  answerSubmitted = false;
-  resetAnswerScreen();
-  document.getElementById('input-topic').value = '';
-  showScreen('screen-host-lobby');
+
+  if (isHost) {
+    document.getElementById('input-topic').value = '';
+    document.getElementById('host-error').textContent = '';
+    showScreen('screen-host-lobby');
+  }
+  // 参加者はlistenRoomのon('value')がlobbyステータスを受け取って
+  // 自然に待機画面に留まる（listenRoomはlobbyを明示的にハンドルしていないので現在の画面のまま）
+  // → 参加者用にlobbyハンドルを追加
 }
 
 // リログ時に古いアカウントをFirebaseから削除
