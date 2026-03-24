@@ -819,17 +819,14 @@ function resetAnswerScreen() {
 }
 
 function showAnswerScreen(room) {
-  // 送信済みなら一切触らない
+  // 送信済みなら絶対に触らない
   if (answerSubmitted) return;
 
-  // 既に回答画面が表示されていて入力中なら触らない
+  // 既に回答画面が表示されているなら触らない（入力保護）
   const active = document.querySelector('.screen.active');
-  if (active && active.id === 'screen-answer') {
-    const inputEl = document.getElementById('input-answer');
-    if (inputEl && inputEl.value.length > 0) return;
-  }
+  if (active && active.id === 'screen-answer') return;
 
-  // 回答画面を初期化して表示
+  // 初めて回答画面に来た時だけ初期化
   document.getElementById('answer-topic').textContent = room.topic;
   const inputEl = document.getElementById('input-answer');
   if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
@@ -856,16 +853,21 @@ async function submitAnswer() {
   document.getElementById('input-answer').style.opacity = '0.4';
   answerSubmitted = true;
 
-  // ホストのみ：全員揃ったか一回だけチェックする（.on ではなく .once を使用）
-  if (isHost) {
-    const aSnap = await db.ref(`rooms/${roomCode}/answers`).once('value');
+  // 全員監視：Firebaseのanswersを監視して全員揃ったらホストがhostPickAnswerを呼ぶ
+  const answerListener = db.ref(`rooms/${roomCode}/answers`).on('value', async (snap) => {
+    const answers = snap.val() || {};
     const pSnap = await db.ref(`rooms/${roomCode}/players`).once('value');
-    const answers = aSnap.val() || {};
     const players = pSnap.val() || {};
-    if (Object.keys(answers).length >= Object.keys(players).length) {
-      hostPickAnswer(answers);
+    const roomSnap = await db.ref(`rooms/${roomCode}/status`).once('value');
+    if (roomSnap.val() !== 'answering') {
+      db.ref(`rooms/${roomCode}/answers`).off('value', answerListener);
+      return;
     }
-  }
+    if (Object.keys(answers).length >= Object.keys(players).length && Object.keys(answers).length > 0) {
+      db.ref(`rooms/${roomCode}/answers`).off('value', answerListener);
+      if (isHost) hostPickAnswer(answers);
+    }
+  });
 }
 
 async function hostPickAnswer(answers) {
