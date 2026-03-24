@@ -805,10 +805,13 @@ async function hostStart() {
   if (!topic) { document.getElementById('host-error').textContent = 'お題を入力してください'; return; }
   answerSubmitted = false;
   hasVoted = false;
+  knownGameSessionId = null;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  const gameSessionId = generateId(); // 毎回ユニークなIDでセッションを識別
   await db.ref(`rooms/${roomCode}`).update({
     status: 'answering', topic, timerSeconds: timerSec,
     answers: null, currentAnswer: null, votes: null, roundNum: 0,
+    gameSessionId,
   });
 }
 
@@ -816,7 +819,7 @@ let answerSubmitted = false;
 
 function resetAnswerScreen() {
   answerSubmitted = false;
-  currentAnswerTopic = null; // 次のお題を必ず新しいお題として扱う
+  knownGameSessionId = null; // 次のゲームセッションを確実に新しいとして扱う
   const el = document.getElementById('input-answer');
   if (el) { el.value = ''; el.disabled = false; el.style.opacity = '1'; }
   const wrap = document.getElementById('btn-submit-answer-wrap');
@@ -827,16 +830,17 @@ function resetAnswerScreen() {
   if (errEl) errEl.textContent = '';
 }
 
-// 現在表示中の回答画面のtopicを記録（新しいお題かどうか判定に使う）
-let currentAnswerTopic = null;
+// ゲームセッションIDで「新しいゲームかどうか」を判定（topic文字列比較より確実）
+let knownGameSessionId = null;
 
 function showAnswerScreen(room) {
-  const isNewTopic = room.topic !== currentAnswerTopic;
+  const gameSessionId = room.gameSessionId || null;
+  const isNewSession = gameSessionId !== knownGameSessionId;
 
-  if (isNewTopic) {
-    // 新しいお題 → 必ず初期化して表示（answerSubmittedも強制リセット）
+  if (isNewSession) {
+    // 新しいゲームセッション → 必ず初期化して表示
     answerSubmitted = false;
-    currentAnswerTopic = room.topic;
+    knownGameSessionId = gameSessionId;
     document.getElementById('answer-topic').textContent = room.topic;
     const inputEl = document.getElementById('input-answer');
     if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
@@ -850,9 +854,8 @@ function showAnswerScreen(room) {
     return;
   }
 
-  // 同じお題 → 送信済みなら保護、未送信なら入力中を守る
+  // 同じセッション → 送信済みなら入力を保護
   if (answerSubmitted) {
-    // すでにscreen-answerが表示中なら何もしない
     const active = document.querySelector('.screen.active');
     if (active && active.id === 'screen-answer') return;
     // 別画面から戻ってきた場合は送信済み状態で表示
@@ -866,11 +869,10 @@ function showAnswerScreen(room) {
     return;
   }
 
-  // 同じお題・未送信 → すでに入力中なら触らない（入力保護）
+  // 同じセッション・未送信 → 入力中なら触らない
   const active = document.querySelector('.screen.active');
   if (active && active.id === 'screen-answer') return;
 
-  // 入力画面を初期化して表示
   document.getElementById('answer-topic').textContent = room.topic;
   const inputEl = document.getElementById('input-answer');
   if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
