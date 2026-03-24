@@ -695,7 +695,20 @@ function saveSession() {
   sessionStorage.setItem('isHost', isHost);
 }
 
-
+function loadSession() {
+  const savedId = sessionStorage.getItem('myId');
+  const savedName = sessionStorage.getItem('myName');
+  const savedRoom = sessionStorage.getItem('roomCode');
+  const savedHost = sessionStorage.getItem('isHost');
+  if (savedId && savedName && savedRoom) {
+    myId = savedId;
+    myName = savedName;
+    roomCode = savedRoom;
+    isHost = savedHost === 'true';
+    return true;
+  }
+  return false;
+}
 
 async function goHost() {
   const name = document.getElementById('input-name').value.trim();
@@ -706,9 +719,7 @@ async function goHost() {
     host: myId, status: 'lobby', topic: '', timerSeconds: 180,
     currentAnswer: null, roundNum: 0,
   });
-  const hostPlayerRef = db.ref(`rooms/${roomCode}/players/${myId}`);
-  await hostPlayerRef.set({ name: myName, isHost: true });
-  hostPlayerRef.onDisconnect().remove(); // 切断時に自動削除
+  await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: true });
   document.getElementById('display-code').textContent = roomCode;
   saveSession();
   showScreen('screen-host-lobby');
@@ -739,9 +750,7 @@ async function goJoin() {
   const nameExists = Object.values(players).some(p => p.name === name);
   if (nameExists) { document.getElementById('join-name-error').textContent = 'その名前は既に使われています'; return; }
   myName = name; myId = generateId(); isHost = false; roomCode = code;
-  const joinPlayerRef = db.ref(`rooms/${roomCode}/players/${myId}`);
-  await joinPlayerRef.set({ name: myName, isHost: false });
-  joinPlayerRef.onDisconnect().remove(); // 切断時に自動削除
+  await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: false });
   document.getElementById('join-display-code').textContent = roomCode;
   saveSession();
   showScreen('screen-join-lobby');
@@ -805,13 +814,10 @@ async function hostStart() {
   if (!topic) { document.getElementById('host-error').textContent = 'お題を入力してください'; return; }
   answerSubmitted = false;
   hasVoted = false;
-  knownGameSessionId = null;
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-  const gameSessionId = generateId(); // 毎回ユニークなIDでセッションを識別
   await db.ref(`rooms/${roomCode}`).update({
     status: 'answering', topic, timerSeconds: timerSec,
     answers: null, currentAnswer: null, votes: null, roundNum: 0,
-    gameSessionId,
   });
 }
 
@@ -819,7 +825,7 @@ let answerSubmitted = false;
 
 function resetAnswerScreen() {
   answerSubmitted = false;
-  knownGameSessionId = null; // 次のゲームセッションを確実に新しいとして扱う
+  currentAnswerTopic = null; // 次のお題を必ず新しいお題として扱う
   const el = document.getElementById('input-answer');
   if (el) { el.value = ''; el.disabled = false; el.style.opacity = '1'; }
   const wrap = document.getElementById('btn-submit-answer-wrap');
@@ -830,17 +836,16 @@ function resetAnswerScreen() {
   if (errEl) errEl.textContent = '';
 }
 
-// ゲームセッションIDで「新しいゲームかどうか」を判定（topic文字列比較より確実）
-let knownGameSessionId = null;
+// 現在表示中の回答画面のtopicを記録（新しいお題かどうか判定に使う）
+let currentAnswerTopic = null;
 
 function showAnswerScreen(room) {
-  const gameSessionId = room.gameSessionId || null;
-  const isNewSession = gameSessionId !== knownGameSessionId;
+  const isNewTopic = room.topic !== currentAnswerTopic;
 
-  if (isNewSession) {
-    // 新しいゲームセッション → 必ず初期化して表示
+  if (isNewTopic) {
+    // 新しいお題 → 必ず初期化して表示（answerSubmittedも強制リセット）
     answerSubmitted = false;
-    knownGameSessionId = gameSessionId;
+    currentAnswerTopic = room.topic;
     document.getElementById('answer-topic').textContent = room.topic;
     const inputEl = document.getElementById('input-answer');
     if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
@@ -854,8 +859,9 @@ function showAnswerScreen(room) {
     return;
   }
 
-  // 同じセッション → 送信済みなら入力を保護
+  // 同じお題 → 送信済みなら保護、未送信なら入力中を守る
   if (answerSubmitted) {
+    // すでにscreen-answerが表示中なら何もしない
     const active = document.querySelector('.screen.active');
     if (active && active.id === 'screen-answer') return;
     // 別画面から戻ってきた場合は送信済み状態で表示
@@ -869,10 +875,11 @@ function showAnswerScreen(room) {
     return;
   }
 
-  // 同じセッション・未送信 → 入力中なら触らない
+  // 同じお題・未送信 → すでに入力中なら触らない（入力保護）
   const active = document.querySelector('.screen.active');
   if (active && active.id === 'screen-answer') return;
 
+  // 入力画面を初期化して表示
   document.getElementById('answer-topic').textContent = room.topic;
   const inputEl = document.getElementById('input-answer');
   if (inputEl) { inputEl.value = ''; inputEl.disabled = false; inputEl.style.opacity = '1'; }
@@ -975,7 +982,7 @@ function showVoteScreen(room, players) {
     }
     showScreen('screen-vote');
   }
-  startTimer(room.timerEnd, (room.timerSeconds || 180) * 1000);
+  startTimer(room.timerEnd);
 }
 
 async function vote(targetId) {
@@ -993,14 +1000,11 @@ async function vote(targetId) {
   await db.ref(`rooms/${roomCode}/votes`).push({ voterId: myId, targetId });
 }
 
-let timerTotal = 180000; // startTimer呼び出し時に設定
-
-function startTimer(endTime, durationMs) {
+function startTimer(endTime) {
   if (timerInterval) clearInterval(timerInterval);
-  timerTotal = durationMs || 180000;
   timerInterval = setInterval(() => {
     const remaining = Math.max(0, endTime - Date.now());
-    const pct = (remaining / timerTotal) * 100;
+    const pct = (remaining / 60000) * 100;
     ['timer-bar','timer-bar-2'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.style.width = pct+'%'; el.style.background = pct < 25 ? '#ff4444' : 'var(--red)'; }
@@ -1144,7 +1148,6 @@ function togglePresets() {
 function initPresets() {
   const list = document.getElementById('preset-list');
   if (!list) return;
-  if (list.children.length > 0) return; // 既に追加済みなら何もしない
   PRESETS.forEach(p => {
     const btn = document.createElement('button');
     btn.className = 'btn btn-ghost';
@@ -1281,19 +1284,26 @@ async function playAgain() {
   if (isHost) {
     document.getElementById('input-topic').value = '';
     document.getElementById('host-error').textContent = '';
-    initPresets(); // プリセットリストを確実に表示（重複ガード付き）
     showScreen('screen-host-lobby');
   }
-  // 参加者はlistenRoomのlobbyハンドラで待機室へ自動遷移
+  // 参加者はlistenRoomのon('value')がlobbyステータスを受け取って
+  // 自然に待機画面に留まる（listenRoomはlobbyを明示的にハンドルしていないので現在の画面のまま）
+  // → 参加者用にlobbyハンドルを追加
 }
 
-// ページ離脱・リロード時にFirebaseから自分のプレイヤー情報を削除
-window.addEventListener('beforeunload', () => {
-  if (roomCode && myId) {
-    // sendBeacon経由ではFirebase SDKは使えないため、navigator.sendBeaconは使わない
-    // onDisconnectで対応するのが理想だが、簡易的にbeforeunloadで試みる
-    db.ref(`rooms/${roomCode}/players/${myId}`).remove().catch(() => {});
+// リログ時に古いアカウントをFirebaseから削除
+window.addEventListener('load', async () => {
+  const savedId = sessionStorage.getItem('myId');
+  const savedRoom = sessionStorage.getItem('roomCode');
+  if (savedId && savedRoom) {
+    try {
+      await db.ref(`rooms/${savedRoom}/players/${savedId}`).remove();
+    } catch(e) {}
   }
+  sessionStorage.removeItem('myId');
+  sessionStorage.removeItem('myName');
+  sessionStorage.removeItem('roomCode');
+  sessionStorage.removeItem('isHost');
 });
 
 window.goHost = goHost;
