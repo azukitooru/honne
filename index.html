@@ -695,20 +695,7 @@ function saveSession() {
   sessionStorage.setItem('isHost', isHost);
 }
 
-function loadSession() {
-  const savedId = sessionStorage.getItem('myId');
-  const savedName = sessionStorage.getItem('myName');
-  const savedRoom = sessionStorage.getItem('roomCode');
-  const savedHost = sessionStorage.getItem('isHost');
-  if (savedId && savedName && savedRoom) {
-    myId = savedId;
-    myName = savedName;
-    roomCode = savedRoom;
-    isHost = savedHost === 'true';
-    return true;
-  }
-  return false;
-}
+
 
 async function goHost() {
   const name = document.getElementById('input-name').value.trim();
@@ -719,7 +706,9 @@ async function goHost() {
     host: myId, status: 'lobby', topic: '', timerSeconds: 180,
     currentAnswer: null, roundNum: 0,
   });
-  await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: true });
+  const hostPlayerRef = db.ref(`rooms/${roomCode}/players/${myId}`);
+  await hostPlayerRef.set({ name: myName, isHost: true });
+  hostPlayerRef.onDisconnect().remove(); // 切断時に自動削除
   document.getElementById('display-code').textContent = roomCode;
   saveSession();
   showScreen('screen-host-lobby');
@@ -750,7 +739,9 @@ async function goJoin() {
   const nameExists = Object.values(players).some(p => p.name === name);
   if (nameExists) { document.getElementById('join-name-error').textContent = 'その名前は既に使われています'; return; }
   myName = name; myId = generateId(); isHost = false; roomCode = code;
-  await db.ref(`rooms/${roomCode}/players/${myId}`).set({ name: myName, isHost: false });
+  const joinPlayerRef = db.ref(`rooms/${roomCode}/players/${myId}`);
+  await joinPlayerRef.set({ name: myName, isHost: false });
+  joinPlayerRef.onDisconnect().remove(); // 切断時に自動削除
   document.getElementById('join-display-code').textContent = roomCode;
   saveSession();
   showScreen('screen-join-lobby');
@@ -982,7 +973,7 @@ function showVoteScreen(room, players) {
     }
     showScreen('screen-vote');
   }
-  startTimer(room.timerEnd);
+  startTimer(room.timerEnd, (room.timerSeconds || 180) * 1000);
 }
 
 async function vote(targetId) {
@@ -1000,11 +991,14 @@ async function vote(targetId) {
   await db.ref(`rooms/${roomCode}/votes`).push({ voterId: myId, targetId });
 }
 
-function startTimer(endTime) {
+let timerTotal = 180000; // startTimer呼び出し時に設定
+
+function startTimer(endTime, durationMs) {
   if (timerInterval) clearInterval(timerInterval);
+  timerTotal = durationMs || 180000;
   timerInterval = setInterval(() => {
     const remaining = Math.max(0, endTime - Date.now());
-    const pct = (remaining / 60000) * 100;
+    const pct = (remaining / timerTotal) * 100;
     ['timer-bar','timer-bar-2'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.style.width = pct+'%'; el.style.background = pct < 25 ? '#ff4444' : 'var(--red)'; }
@@ -1148,6 +1142,7 @@ function togglePresets() {
 function initPresets() {
   const list = document.getElementById('preset-list');
   if (!list) return;
+  if (list.children.length > 0) return; // 既に追加済みなら何もしない
   PRESETS.forEach(p => {
     const btn = document.createElement('button');
     btn.className = 'btn btn-ghost';
@@ -1284,26 +1279,19 @@ async function playAgain() {
   if (isHost) {
     document.getElementById('input-topic').value = '';
     document.getElementById('host-error').textContent = '';
+    initPresets(); // プリセットリストを確実に表示（重複ガード付き）
     showScreen('screen-host-lobby');
   }
-  // 参加者はlistenRoomのon('value')がlobbyステータスを受け取って
-  // 自然に待機画面に留まる（listenRoomはlobbyを明示的にハンドルしていないので現在の画面のまま）
-  // → 参加者用にlobbyハンドルを追加
+  // 参加者はlistenRoomのlobbyハンドラで待機室へ自動遷移
 }
 
-// リログ時に古いアカウントをFirebaseから削除
-window.addEventListener('load', async () => {
-  const savedId = sessionStorage.getItem('myId');
-  const savedRoom = sessionStorage.getItem('roomCode');
-  if (savedId && savedRoom) {
-    try {
-      await db.ref(`rooms/${savedRoom}/players/${savedId}`).remove();
-    } catch(e) {}
+// ページ離脱・リロード時にFirebaseから自分のプレイヤー情報を削除
+window.addEventListener('beforeunload', () => {
+  if (roomCode && myId) {
+    // sendBeacon経由ではFirebase SDKは使えないため、navigator.sendBeaconは使わない
+    // onDisconnectで対応するのが理想だが、簡易的にbeforeunloadで試みる
+    db.ref(`rooms/${roomCode}/players/${myId}`).remove().catch(() => {});
   }
-  sessionStorage.removeItem('myId');
-  sessionStorage.removeItem('myName');
-  sessionStorage.removeItem('roomCode');
-  sessionStorage.removeItem('isHost');
 });
 
 window.goHost = goHost;
